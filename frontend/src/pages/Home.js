@@ -9,13 +9,11 @@ export default function Home() {
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
-    // Fetch alerts
     fetch(`${API}/api/alerts`)
       .then(r => r.json())
       .then(d => setAlerts(d.alerts || []))
       .catch(() => {});
 
-    // Fetch quick stats
     fetch(`${API}/api/sales`)
       .then(r => r.json())
       .then(d => setStats(d.summary))
@@ -27,11 +25,16 @@ export default function Home() {
 
   return (
     <div className="home-hero">
-      <div className="grid-overlay" />
-      <div className="home-content">
-        <div className="home-eyebrow">Business Intelligence Platform</div>
+      <div className="home-hero-content">
+        <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.8rem", letterSpacing: "3px", textTransform: "uppercase", marginBottom: "1rem" }}>
+          Business Intelligence Platform
+        </div>
+
         <h1 className="home-title">VALYANA<br /><span>DASHBOARD</span></h1>
-        <p className="home-sub">Real-time data · AI insights · Google Sheets</p>
+
+        <p style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.9rem", letterSpacing: "2px", textTransform: "uppercase", marginBottom: "2.5rem" }}>
+          Real-time data · AI insights · Google Sheets
+        </p>
 
         {/* ALERTS */}
         {alerts.length > 0 && (
@@ -50,22 +53,25 @@ export default function Home() {
 
         {/* QUICK STATS */}
         {stats && (
-          <div className="home-stats">
-            <div className="home-stat">
-              <div className="home-stat-val">{fmt(stats.totalRevenue)}</div>
-              <div className="home-stat-label">Total Revenue</div>
+          <div style={{ display: "flex", gap: "2.5rem", justifyContent: "center", flexWrap: "wrap", marginBottom: "3rem" }}>
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: "#fff", letterSpacing: "2px" }}>{fmt(stats.totalRevenue)}</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.72rem", letterSpacing: "1.5px", textTransform: "uppercase" }}>Total Revenue</div>
             </div>
-            <div className="home-stat">
-              <div className="home-stat-val">{fmt(stats.totalNewCustomers)}</div>
-              <div className="home-stat-label">Total Customers</div>
+            <div style={{ width: "1px", background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: "#fff", letterSpacing: "2px" }}>{fmt(stats.totalNewCustomers)}</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.72rem", letterSpacing: "1.5px", textTransform: "uppercase" }}>Total Customers</div>
             </div>
-            <div className="home-stat">
-              <div className="home-stat-val">{fmt(stats.avgDailyRevenue)}</div>
-              <div className="home-stat-label">Daily Avg Revenue</div>
+            <div style={{ width: "1px", background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: "#fff", letterSpacing: "2px" }}>{fmt(stats.avgDailyRevenue)}</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.72rem", letterSpacing: "1.5px", textTransform: "uppercase" }}>Daily Avg Revenue</div>
             </div>
-            <div className="home-stat">
-              <div className="home-stat-val">{stats.totalDays}</div>
-              <div className="home-stat-label">Days Tracked</div>
+            <div style={{ width: "1px", background: "rgba(255,255,255,0.15)" }} />
+            <div style={{ textAlign: "center" }}>
+              <div style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: "2.2rem", color: "#fff", letterSpacing: "2px" }}>{stats.totalDays}</div>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: "0.72rem", letterSpacing: "1.5px", textTransform: "uppercase" }}>Days Tracked</div>
             </div>
           </div>
         )}
@@ -89,7 +95,9 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="home-date">📅 {today}</div>
+        <div style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.78rem", marginTop: "2.5rem", letterSpacing: "1px" }}>
+          📅 {today}
+        </div>
       </div>
     </div>
   );
