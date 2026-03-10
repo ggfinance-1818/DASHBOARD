@@ -4,7 +4,12 @@ const cors = require("cors");
 const axios = require("axios");
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://mellow-croquembouche-e329c7.netlify.app',
+    'http://localhost:3000'
+  ]
+}));
 app.use(express.json());
 
 const SHEET_ID = process.env.SHEET_ID || "1pEo8w5LkuKh7lBpioWPcq9imXBPKGN8pWGcr4QGLlcg";
