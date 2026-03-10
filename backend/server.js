@@ -4,12 +4,14 @@ const cors = require("cors");
 const axios = require("axios");
 
 const app = express();
+
+// Fix CORS - allow all origins
 app.use(cors({
-  origin: [
-    'https://mellow-croquembouche-e329c7.netlify.app',
-    'http://localhost:3000'
-  ]
+  origin: "*",
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
 app.use(express.json());
 
 const SHEET_ID = process.env.SHEET_ID || "1pEo8w5LkuKh7lBpioWPcq9imXBPKGN8pWGcr4QGLlcg";
@@ -49,7 +51,12 @@ function filterByDate(rows, startDate, endDate) {
   });
 }
 
-// GET /api/sales - Sales Report
+// GET /api/health
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// GET /api/sales
 app.get("/api/sales", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -75,7 +82,7 @@ app.get("/api/sales", async (req, res) => {
   }
 });
 
-// GET /api/jars - Jars Report
+// GET /api/jars
 app.get("/api/jars", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -107,14 +114,13 @@ app.get("/api/jars", async (req, res) => {
   }
 });
 
-// GET /api/incentive - Sales Staff Incentive Report (placeholder - ready for staff sheet)
+// GET /api/incentive
 app.get("/api/incentive", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const all = await fetchSheetData();
     const rows = filterByDate(all, startDate, endDate);
 
-    // Derived incentive data from sales (until staff sheet is connected)
     const totalRevenue = rows.reduce((sum, r) => sum + (r.revenue || 0), 0);
     const totalNewCustomers = rows.reduce((sum, r) => sum + (r["new customers"] || 0), 0);
 
@@ -138,8 +144,8 @@ app.get("/api/incentive", async (req, res) => {
   }
 });
 
-// GET /api/health
-app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
-
+// Use Railway's PORT env variable
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Valyana Backend running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Valyana Backend running on port ${PORT}`);
+});
