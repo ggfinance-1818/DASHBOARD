@@ -8,8 +8,19 @@ const API = process.env.REACT_APP_API_URL || '';
 
 export default function JarsReport() {
   const [data, setData] = useState(null);
+  const [todayData, setTodayData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isFiltered, setIsFiltered] = useState(false);
+
+  const fetchToday = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch(`${API}/api/jars?startDate=${today}&endDate=${today}`);
+      if (!res.ok) throw new Error('API error');
+      setTodayData(await res.json());
+    } catch (e) { console.error('Today fetch failed', e); }
+  }, []);
 
   const fetchData = useCallback(async (start, end) => {
     setLoading(true); setError('');
@@ -20,13 +31,15 @@ export default function JarsReport() {
       const res = await fetch(`${API}/api/jars?${params}`);
       if (!res.ok) throw new Error('API error');
       setData(await res.json());
+      setIsFiltered(!!(start || end));
     } catch (e) { setError('Could not load jars data. Make sure the backend is running.'); }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchData('', ''); }, [fetchData]);
+  useEffect(() => { fetchToday(); fetchData('', ''); }, [fetchToday, fetchData]);
 
   const fmt = n => n?.toLocaleString() ?? '—';
+  const todayRow = todayData?.daily?.[0];
 
   return (
     <div className="page">
@@ -44,28 +57,65 @@ export default function JarsReport() {
 
         {data && !loading && (
           <>
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-label">Total Delivered</div>
-                <div className="stat-value">{fmt(data.summary.totalDelivered)}</div>
-                <div className="stat-sub">jars over {data.summary.totalDays} days</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Empty in Stock</div>
-                <div className="stat-value">{fmt(data.summary.currentEmptyStock)}</div>
-                <div className="stat-sub">latest reading</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">With Customers</div>
-                <div className="stat-value">{fmt(data.summary.currentWithCustomers)}</div>
-                <div className="stat-sub">jars deployed</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Avg Delivered/Day</div>
-                <div className="stat-value">{data.summary.totalDays ? Math.round(data.summary.totalDelivered / data.summary.totalDays) : '—'}</div>
-                <div className="stat-sub">daily average</div>
-              </div>
-            </div>
+            {!isFiltered && (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  📅 TODAY — {new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </div>
+                <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+                  <div className="stat-card">
+                    <div className="stat-label">Today's Jars Delivered</div>
+                    <div className="stat-value">{todayRow ? fmt(todayRow.jarsDelivered) : '—'}</div>
+                    <div className="stat-sub">{todayRow ? 'delivered today' : 'no data yet today'}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Today's Empty Stock</div>
+                    <div className="stat-value">{todayRow ? fmt(todayRow.emptyInStock) : '—'}</div>
+                    <div className="stat-sub">{todayRow ? 'in warehouse today' : 'no data yet today'}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Jars With Customers</div>
+                    <div className="stat-value">{fmt(data.summary.currentWithCustomers)}</div>
+                    <div className="stat-sub">latest reading</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Total Delivered (All Time)</div>
+                    <div className="stat-value">{fmt(data.summary.totalDelivered)}</div>
+                    <div className="stat-sub">across {data.summary.totalDays} days</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {isFiltered && (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  📊 FILTERED RESULTS — {data.summary.totalDays} days selected
+                </div>
+                <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+                  <div className="stat-card">
+                    <div className="stat-label">Total Delivered</div>
+                    <div className="stat-value">{fmt(data.summary.totalDelivered)}</div>
+                    <div className="stat-sub">in selected period</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Empty in Stock</div>
+                    <div className="stat-value">{fmt(data.summary.currentEmptyStock)}</div>
+                    <div className="stat-sub">latest in period</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">With Customers</div>
+                    <div className="stat-value">{fmt(data.summary.currentWithCustomers)}</div>
+                    <div className="stat-sub">latest in period</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Avg Delivered/Day</div>
+                    <div className="stat-value">{data.summary.totalDays ? Math.round(data.summary.totalDelivered / data.summary.totalDays) : '—'}</div>
+                    <div className="stat-sub">daily average</div>
+                  </div>
+                </div>
+              </>
+            )}
 
             <AISummary data={data} reportType="jars" />
 
@@ -91,10 +141,6 @@ export default function JarsReport() {
                         <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
                         <stop offset="95%" stopColor="#3b82f6" stopOpacity={0.02} />
                       </linearGradient>
-                      <linearGradient id="custGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#1e5fcf" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#1e5fcf" stopOpacity={0.02} />
-                      </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e0eaf8" />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={d => d?.slice(5)} />
@@ -102,7 +148,7 @@ export default function JarsReport() {
                     <Tooltip />
                     <Legend />
                     <Area type="monotone" dataKey="emptyInStock" stroke="#3b82f6" fill="url(#emptyGrad)" name="Empty Stock" />
-                    <Area type="monotone" dataKey="withCustomers" stroke="#1e5fcf" fill="url(#custGrad)" name="With Customers" />
+                    <Area type="monotone" dataKey="withCustomers" stroke="#1e5fcf" fill="url(#emptyGrad)" name="With Customers" />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
