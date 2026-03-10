@@ -10,6 +10,7 @@ app.use(express.json());
 const SHEET_ID = process.env.SHEET_ID || "1pEo8w5LkuKh7lBpioWPcq9imXBPKGN8pWGcr4QGLlcg";
 const LOW_STOCK_THRESHOLD = 1000;
 
+// Fetch any sheet tab by name — headers lowercased for easy lookup
 async function fetchSheet(sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const response = await axios.get(url);
@@ -23,7 +24,18 @@ async function fetchSheet(sheetName) {
       obj[h] = isNaN(val) || val === "" ? val : Number(val);
     });
     return obj;
-  }).filter(row => Object.values(row).some(v => v !== "" && v !== null));
+  }).filter(row => Object.values(row).some(v => v !== "" && v !== null && v !== undefined));
+}
+
+// Flexible field finder — handles slight column name differences
+function getField(row, ...keys) {
+  for (const key of keys) {
+    const k = key.toLowerCase().trim();
+    if (row[k] !== undefined && row[k] !== "") return row[k];
+    const found = Object.keys(row).find(r => r.includes(k) || k.includes(r));
+    if (found && row[found] !== undefined && row[found] !== "") return row[found];
+  }
+  return null;
 }
 
 function filterByDate(rows, startDate, endDate) {
@@ -47,11 +59,11 @@ app.get("/api/alerts", async (req, res) => {
     const rows = await fetchSheet("Daily Metrics");
     const latest = rows[rows.length - 1] || {};
     const alerts = [];
+    const emptyStock = Number(getField(latest, "empty jars in stock", "empty jars") || 0);
 
-    const emptyStock = latest["empty jars in stock"] || 0;
-    if (emptyStock < LOW_STOCK_THRESHOLD) {
+    if (emptyStock > 0 && emptyStock < LOW_STOCK_THRESHOLD) {
       alerts.push({ type: "danger", icon: "🚨", title: "Critical Low Stock", message: `Only ${emptyStock.toLocaleString()} empty jars remaining — below the 1,000 threshold. Restock immediately!` });
-    } else if (emptyStock < LOW_STOCK_THRESHOLD * 2) {
+    } else if (emptyStock > 0 && emptyStock < LOW_STOCK_THRESHOLD * 2) {
       alerts.push({ type: "warning", icon: "⚠️", title: "Stock Running Low", message: `${emptyStock.toLocaleString()} empty jars in stock — approaching low threshold. Consider restocking soon.` });
     }
 
@@ -61,7 +73,7 @@ app.get("/api/alerts", async (req, res) => {
       if (today.revenue && yesterday.revenue) {
         const drop = ((yesterday.revenue - today.revenue) / yesterday.revenue) * 100;
         if (drop > 40) {
-          alerts.push({ type: "warning", icon: "📉", title: "Revenue Drop Detected", message: `Today's revenue (${today.revenue.toLocaleString()}) is ${Math.round(drop)}% lower than yesterday (${yesterday.revenue.toLocaleString()}). Investigate causes.` });
+          alerts.push({ type: "warning", icon: "📉", title: "Revenue Drop Detected", message: `Today's revenue (${today.revenue.toLocaleString()}) is ${Math.round(drop)}% lower than yesterday (${yesterday.revenue.toLocaleString()}).` });
         }
       }
     }
@@ -83,12 +95,12 @@ app.get("/api/sales", async (req, res) => {
     const all = await fetchSheet("Daily Metrics");
     const rows = filterByDate(all, startDate, endDate);
     const totalRevenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
-    const totalNewCustomers = rows.reduce((s, r) => s + (r["new customers"] || 0), 0);
+    const totalNewCustomers = rows.reduce((s, r) => s + (Number(getField(r, "new customers", "newcustomers", "customers")) || 0), 0);
     const avgDailyRevenue = rows.length ? Math.round(totalRevenue / rows.length) : 0;
     const peakDay = rows.reduce((best, r) => (!best || r.revenue > best.revenue ? r : best), null);
     res.json({
       summary: { totalRevenue, totalNewCustomers, avgDailyRevenue, totalDays: rows.length, peakDay },
-      daily: rows.map(r => ({ date: r.date, revenue: r.revenue, newCustomers: r["new customers"] })),
+      daily: rows.map(r => ({ date: r.date, revenue: r.revenue, newCustomers: Number(getField(r, "new customers", "customers") || 0) })),
     });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch sales data", details: err.message });
@@ -101,20 +113,22 @@ app.get("/api/jars", async (req, res) => {
     const { startDate, endDate } = req.query;
     const all = await fetchSheet("Daily Metrics");
     const rows = filterByDate(all, startDate, endDate);
-    const totalDelivered = rows.reduce((s, r) => s + (r["jars delivered"] || 0), 0);
+    const totalDelivered = rows.reduce((s, r) => s + (Number(getField(r, "jars delivered", "delivered")) || 0), 0);
     const latestRow = rows[rows.length - 1] || {};
-    const emptyStock = latestRow["empty jars in stock"] || 0;
+    const emptyStock = Number(getField(latestRow, "empty jars in stock", "empty jars") || 0);
+    const withCustomers = Number(getField(latestRow, "jars with customers", "with customers") || 0);
     res.json({
       summary: {
-        totalDelivered, currentEmptyStock: emptyStock,
-        currentWithCustomers: latestRow["jars with customers"] || 0,
+        totalDelivered, currentEmptyStock: emptyStock, currentWithCustomers: withCustomers,
         totalDays: rows.length,
-        lowStockAlert: emptyStock < LOW_STOCK_THRESHOLD,
-        lowStockWarning: emptyStock < LOW_STOCK_THRESHOLD * 2,
+        lowStockAlert: emptyStock > 0 && emptyStock < LOW_STOCK_THRESHOLD,
+        lowStockWarning: emptyStock > 0 && emptyStock < LOW_STOCK_THRESHOLD * 2,
       },
       daily: rows.map(r => ({
-        date: r.date, jarsDelivered: r["jars delivered"],
-        emptyInStock: r["empty jars in stock"], withCustomers: r["jars with customers"],
+        date: r.date,
+        jarsDelivered: Number(getField(r, "jars delivered", "delivered") || 0),
+        emptyInStock: Number(getField(r, "empty jars in stock", "empty jars") || 0),
+        withCustomers: Number(getField(r, "jars with customers", "with customers") || 0),
       })),
     });
   } catch (err) {
@@ -122,36 +136,40 @@ app.get("/api/jars", async (req, res) => {
   }
 });
 
-// ── STAFF INCENTIVE (reads "staff report" tab) ────────────────────────────────
+// ── STAFF INCENTIVE — reads "staff report" tab ────────────────────────────────
 app.get("/api/incentive", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     const metricsRows = filterByDate(await fetchSheet("Daily Metrics"), startDate, endDate);
     const totalRevenue = metricsRows.reduce((s, r) => s + (r.revenue || 0), 0);
-    const totalNewCustomers = metricsRows.reduce((s, r) => s + (r["new customers"] || 0), 0);
+    const totalNewCustomers = metricsRows.reduce((s, r) => s + (Number(getField(r, "new customers", "customers")) || 0), 0);
 
-    // Read "staff report" tab — columns: staff name, total sales feb, total sales march, incentive
     let staff = [];
     try {
-      const raw = await fetchSheet("staff report");
-      staff = raw.map((r, i) => {
-        const name = r["staff name"] || r["name"] || `Staff ${i+1}`;
-        const salesFeb = r["total sales feb"] || 0;
-        const salesMarch = r["total sales march"] || 0;
-        const totalSales = salesFeb + salesMarch;
-        const incentiveType = r["incentive"] || "—";
-        return { name, salesFeb, salesMarch, totalSales, incentiveType, rank: 0 };
-      });
+      // Try both possible tab names
+      let raw = [];
+      try { raw = await fetchSheet("staff report"); }
+      catch(e) { raw = await fetchSheet("Staff Incentive"); }
 
-      // Rank by total sales
+      console.log("Staff raw rows:", JSON.stringify(raw.slice(0,2)));
+
+      staff = raw.map((r, i) => {
+        // Flexible column reading — handles "Staff name", "staff name", "Name" etc
+        const name = String(getField(r, "staff name", "name", "staff") || `Staff ${i+1}`);
+        const salesFeb   = Number(getField(r, "total sales feb", "sales feb", "february", "feb") || 0);
+        const salesMarch = Number(getField(r, "total sales march", "sales march", "march") || 0);
+        const incentiveType = String(getField(r, "incentive", "incentive type", "reward") || "TBD");
+        const totalSales = salesFeb + salesMarch;
+        return { name, salesFeb, salesMarch, totalSales, incentiveType, rank: 0 };
+      }).filter(s => s.name && !s.name.startsWith("Staff ") || s.totalSales > 0);
+
       staff.sort((a, b) => b.totalSales - a.totalSales);
       staff.forEach((s, i) => s.rank = i + 1);
-    } catch (e) {
-      console.log("Staff report tab error:", e.message);
-    }
 
-    // Top performer
-    const topPerformer = staff[0] || null;
+      console.log("Processed staff:", JSON.stringify(staff));
+    } catch (e) {
+      console.log("Staff sheet error:", e.message);
+    }
 
     res.json({
       summary: {
@@ -159,11 +177,11 @@ app.get("/api/incentive", async (req, res) => {
         estimatedIncentivePool: Math.round(totalRevenue * 0.05),
         totalDays: metricsRows.length,
         staffCount: staff.length,
-        topPerformer: topPerformer?.name || null,
+        topPerformer: staff[0]?.name || null,
       },
       daily: metricsRows.map(r => ({
         date: r.date, revenue: r.revenue,
-        newCustomers: r["new customers"],
+        newCustomers: Number(getField(r, "new customers", "customers") || 0),
         incentiveEarned: Math.round((r.revenue || 0) * 0.05),
       })),
       staff,
@@ -186,8 +204,8 @@ app.post("/api/ai-summary", async (req, res) => {
     } else if (reportType === "jars") {
       prompt = `You are a logistics analyst for Valyana. Analyze: Delivered: ${data.summary.totalDelivered}, Stock: ${data.summary.currentEmptyStock}, With Customers: ${data.summary.currentWithCustomers}, Days: ${data.summary.totalDays}. ${data.summary.lowStockAlert ? "URGENT: Stock critically low!" : ""} Give 3-4 sentence insight. No bullet points.`;
     } else {
-      const topStaff = data.staff?.slice(0,3).map(s => `${s.name}: ${s.totalSales.toLocaleString()}`).join(", ") || "N/A";
-      prompt = `You are a sales analyst for Valyana. Staff count: ${data.summary.staffCount}, Top performers: ${topStaff}. Total Revenue: ${data.summary.totalRevenue?.toLocaleString()}, Incentive Pool: ${data.summary.estimatedIncentivePool?.toLocaleString()}. Give 3-4 sentence motivating team insight. No bullet points.`;
+      const topStaff = data.staff?.slice(0,3).map(s => `${s.name}: ${s.totalSales?.toLocaleString()}`).join(", ") || "N/A";
+      prompt = `You are a sales analyst for Valyana. Staff count: ${data.summary.staffCount}, Top performers: ${topStaff}. Total Revenue: ${data.summary.totalRevenue?.toLocaleString()}, Incentive Pool: ${data.summary.estimatedIncentivePool?.toLocaleString()}. Give 3-4 sentence motivating insight. No bullet points.`;
     }
 
     const response = await axios.post("https://api.anthropic.com/v1/messages", {
