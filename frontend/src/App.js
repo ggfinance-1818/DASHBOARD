@@ -6,6 +6,7 @@ import Home from './pages/Home';
 import SalesReport from './pages/SalesReport';
 import JarsReport from './pages/JarsReport';
 import IncentiveReport from './pages/IncentiveReport';
+import StaffProfile from './pages/StaffProfile';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
         <Route path="/sales" element={<SalesReport />} />
         <Route path="/jars" element={<JarsReport />} />
         <Route path="/incentive" element={<IncentiveReport />} />
+        <Route path="/staff/:name" element={<StaffProfile />} />
       </Routes>
     </BrowserRouter>
   );
