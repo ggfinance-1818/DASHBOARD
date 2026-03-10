@@ -8,10 +8,25 @@ const API = process.env.REACT_APP_API_URL || '';
 
 export default function SalesReport() {
   const [data, setData] = useState(null);
+  const [todayData, setTodayData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [dates, setDates] = useState({ start: '', end: '' });
+  const [isFiltered, setIsFiltered] = useState(false);
 
+  // Fetch today's data
+  const fetchToday = useCallback(async () => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await fetch(`${API}/api/sales?startDate=${today}&endDate=${today}`);
+      if (!res.ok) throw new Error('API error');
+      const json = await res.json();
+      setTodayData(json);
+    } catch (e) {
+      console.error('Today fetch failed', e);
+    }
+  }, []);
+
+  // Fetch all or filtered data
   const fetchData = useCallback(async (start, end) => {
     setLoading(true); setError('');
     try {
@@ -21,15 +36,23 @@ export default function SalesReport() {
       const res = await fetch(`${API}/api/sales?${params}`);
       if (!res.ok) throw new Error('API error');
       setData(await res.json());
-    } catch (e) { setError('Could not load sales data. Make sure the backend is running.'); }
+      setIsFiltered(!!(start || end));
+    } catch (e) {
+      setError('Could not load sales data. Make sure the backend is running.');
+    }
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchData('', ''); }, [fetchData]);
-
-  const handleApply = (s, e) => { setDates({ start: s, end: e }); fetchData(s, e); };
+  useEffect(() => {
+    fetchToday();
+    fetchData('', '');
+  }, [fetchToday, fetchData]);
 
   const fmt = n => n?.toLocaleString() ?? '—';
+
+  // Use today's data for top stats, or filtered data if date range selected
+  const statsSource = isFiltered ? data?.summary : null;
+  const todayRow = todayData?.daily?.[0];
 
   return (
     <div className="page">
@@ -39,7 +62,7 @@ export default function SalesReport() {
             <Link to="/" className="report-back">← Back to Home</Link>
             <h1 className="report-title">SALES <span>REPORT</span></h1>
           </div>
-          <DateFilter onApply={handleApply} />
+          <DateFilter onApply={(s, e) => fetchData(s, e)} />
         </div>
 
         {loading && <div className="loading-state"><div className="spinner" /><p>Loading sales data...</p></div>}
@@ -47,28 +70,67 @@ export default function SalesReport() {
 
         {data && !loading && (
           <>
-            <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-label">Total Revenue</div>
-                <div className="stat-value">{fmt(data.summary.totalRevenue)}</div>
-                <div className="stat-sub">across {data.summary.totalDays} days</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">New Customers</div>
-                <div className="stat-value">{fmt(data.summary.totalNewCustomers)}</div>
-                <div className="stat-sub">total acquired</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Avg Daily Revenue</div>
-                <div className="stat-value">{fmt(data.summary.avgDailyRevenue)}</div>
-                <div className="stat-sub">per day average</div>
-              </div>
-              <div className="stat-card">
-                <div className="stat-label">Peak Day</div>
-                <div className="stat-value">{fmt(data.summary.peakDay?.revenue)}</div>
-                <div className="stat-sub">{data.summary.peakDay?.date}</div>
-              </div>
-            </div>
+            {/* TODAY STATS - shown when no filter applied */}
+            {!isFiltered && (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  📅 TODAY — {new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </div>
+                <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+                  <div className="stat-card">
+                    <div className="stat-label">Today's Revenue</div>
+                    <div className="stat-value">{todayRow ? fmt(todayRow.revenue) : '—'}</div>
+                    <div className="stat-sub">{todayRow ? 'recorded today' : 'no data yet today'}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Today's New Customers</div>
+                    <div className="stat-value">{todayRow ? fmt(todayRow.newCustomers) : '—'}</div>
+                    <div className="stat-sub">{todayRow ? 'acquired today' : 'no data yet today'}</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Total Revenue (All Time)</div>
+                    <div className="stat-value">{fmt(data.summary.totalRevenue)}</div>
+                    <div className="stat-sub">across {data.summary.totalDays} days</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Peak Day Ever</div>
+                    <div className="stat-value">{fmt(data.summary.peakDay?.revenue)}</div>
+                    <div className="stat-sub">{data.summary.peakDay?.date}</div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* FILTERED STATS - shown when date range applied */}
+            {isFiltered && (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '2px', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                  📊 FILTERED RESULTS — {data.summary.totalDays} days selected
+                </div>
+                <div className="stats-grid" style={{ marginBottom: '1rem' }}>
+                  <div className="stat-card">
+                    <div className="stat-label">Total Revenue</div>
+                    <div className="stat-value">{fmt(data.summary.totalRevenue)}</div>
+                    <div className="stat-sub">in selected period</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">New Customers</div>
+                    <div className="stat-value">{fmt(data.summary.totalNewCustomers)}</div>
+                    <div className="stat-sub">in selected period</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Avg Daily Revenue</div>
+                    <div className="stat-value">{fmt(data.summary.avgDailyRevenue)}</div>
+                    <div className="stat-sub">per day average</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-label">Peak Day</div>
+                    <div className="stat-value">{fmt(data.summary.peakDay?.revenue)}</div>
+                    <div className="stat-sub">{data.summary.peakDay?.date}</div>
+                  </div>
+                </div>
+              </>
+            )}
 
             <AISummary data={data} reportType="sales" />
 
