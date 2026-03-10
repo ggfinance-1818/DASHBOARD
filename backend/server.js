@@ -10,7 +10,6 @@ app.use(express.json());
 const SHEET_ID = process.env.SHEET_ID || "1pEo8w5LkuKh7lBpioWPcq9imXBPKGN8pWGcr4QGLlcg";
 const LOW_STOCK_THRESHOLD = 1000;
 
-// Fetch any sheet tab by name — headers lowercased for easy lookup
 async function fetchSheet(sheetName) {
   const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheetName)}`;
   const response = await axios.get(url);
@@ -27,7 +26,6 @@ async function fetchSheet(sheetName) {
   }).filter(row => Object.values(row).some(v => v !== "" && v !== null && v !== undefined));
 }
 
-// Flexible field finder — handles slight column name differences
 function getField(row, ...keys) {
   for (const key of keys) {
     const k = key.toLowerCase().trim();
@@ -52,6 +50,21 @@ function filterByDate(rows, startDate, endDate) {
 }
 
 app.get("/api/health", (req, res) => res.json({ status: "ok", timestamp: new Date().toISOString() }));
+
+// ── DEBUG ENDPOINT — shows exactly what's in the staff sheet ─────────────────
+app.get("/api/debug-staff", async (req, res) => {
+  const results = {};
+  const tabsToTry = ["staff report", "Staff Report", "staff_report", "Staff Incentive", "staff incentive", "StaffReport"];
+  for (const tab of tabsToTry) {
+    try {
+      const rows = await fetchSheet(tab);
+      results[tab] = { success: true, rowCount: rows.length, firstRow: rows[0] || null, headers: rows[0] ? Object.keys(rows[0]) : [] };
+    } catch (e) {
+      results[tab] = { success: false, error: e.message };
+    }
+  }
+  res.json(results);
+});
 
 // ── ALERTS ───────────────────────────────────────────────────────────────────
 app.get("/api/alerts", async (req, res) => {
@@ -95,7 +108,7 @@ app.get("/api/sales", async (req, res) => {
     const all = await fetchSheet("Daily Metrics");
     const rows = filterByDate(all, startDate, endDate);
     const totalRevenue = rows.reduce((s, r) => s + (r.revenue || 0), 0);
-    const totalNewCustomers = rows.reduce((s, r) => s + (Number(getField(r, "new customers", "newcustomers", "customers")) || 0), 0);
+    const totalNewCustomers = rows.reduce((s, r) => s + (Number(getField(r, "new customers", "customers")) || 0), 0);
     const avgDailyRevenue = rows.length ? Math.round(totalRevenue / rows.length) : 0;
     const peakDay = rows.reduce((best, r) => (!best || r.revenue > best.revenue ? r : best), null);
     res.json({
@@ -136,7 +149,7 @@ app.get("/api/jars", async (req, res) => {
   }
 });
 
-// ── STAFF INCENTIVE — reads "staff report" tab ────────────────────────────────
+// ── STAFF INCENTIVE ───────────────────────────────────────────────────────────
 app.get("/api/incentive", async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
@@ -145,30 +158,27 @@ app.get("/api/incentive", async (req, res) => {
     const totalNewCustomers = metricsRows.reduce((s, r) => s + (Number(getField(r, "new customers", "customers")) || 0), 0);
 
     let staff = [];
-    try {
-      // Try both possible tab names
-      let raw = [];
-      try { raw = await fetchSheet("staff report"); }
-      catch(e) { raw = await fetchSheet("Staff Incentive"); }
-
-      console.log("Staff raw rows:", JSON.stringify(raw.slice(0,2)));
-
-      staff = raw.map((r, i) => {
-        // Flexible column reading — handles "Staff name", "staff name", "Name" etc
-        const name = String(getField(r, "staff name", "name", "staff") || `Staff ${i+1}`);
-        const salesFeb   = Number(getField(r, "total sales feb", "sales feb", "february", "feb") || 0);
-        const salesMarch = Number(getField(r, "total sales march", "sales march", "march") || 0);
-        const incentiveType = String(getField(r, "incentive", "incentive type", "reward") || "TBD");
-        const totalSales = salesFeb + salesMarch;
-        return { name, salesFeb, salesMarch, totalSales, incentiveType, rank: 0 };
-      }).filter(s => s.name && !s.name.startsWith("Staff ") || s.totalSales > 0);
-
-      staff.sort((a, b) => b.totalSales - a.totalSales);
-      staff.forEach((s, i) => s.rank = i + 1);
-
-      console.log("Processed staff:", JSON.stringify(staff));
-    } catch (e) {
-      console.log("Staff sheet error:", e.message);
+    // Try every possible tab name variation
+    const tabNames = ["staff report", "Staff Report", "staff_report", "Staff Incentive", "staff incentive"];
+    for (const tab of tabNames) {
+      try {
+        const raw = await fetchSheet(tab);
+        if (raw.length > 0) {
+          staff = raw.map((r, i) => {
+            const name = String(getField(r, "staff name", "name", "staff") || `Staff ${i+1}`);
+            const salesFeb   = Number(getField(r, "total sales feb", "sales feb", "feb", "february") || 0);
+            const salesMarch = Number(getField(r, "total sales march", "sales march", "march") || 0);
+            const incentiveType = String(getField(r, "incentive", "incentive type", "reward") || "TBD");
+            return { name, salesFeb, salesMarch, totalSales: salesFeb + salesMarch, incentiveType, rank: 0 };
+          });
+          staff.sort((a, b) => b.totalSales - a.totalSales);
+          staff.forEach((s, i) => s.rank = i + 1);
+          console.log(`✅ Staff loaded from tab: "${tab}" — ${staff.length} members`);
+          break;
+        }
+      } catch (e) {
+        console.log(`❌ Tab "${tab}" failed: ${e.message}`);
+      }
     }
 
     res.json({
@@ -205,7 +215,7 @@ app.post("/api/ai-summary", async (req, res) => {
       prompt = `You are a logistics analyst for Valyana. Analyze: Delivered: ${data.summary.totalDelivered}, Stock: ${data.summary.currentEmptyStock}, With Customers: ${data.summary.currentWithCustomers}, Days: ${data.summary.totalDays}. ${data.summary.lowStockAlert ? "URGENT: Stock critically low!" : ""} Give 3-4 sentence insight. No bullet points.`;
     } else {
       const topStaff = data.staff?.slice(0,3).map(s => `${s.name}: ${s.totalSales?.toLocaleString()}`).join(", ") || "N/A";
-      prompt = `You are a sales analyst for Valyana. Staff count: ${data.summary.staffCount}, Top performers: ${topStaff}. Total Revenue: ${data.summary.totalRevenue?.toLocaleString()}, Incentive Pool: ${data.summary.estimatedIncentivePool?.toLocaleString()}. Give 3-4 sentence motivating insight. No bullet points.`;
+      prompt = `You are a sales analyst for Valyana. Staff: ${data.summary.staffCount}, Top performers: ${topStaff}. Revenue: ${data.summary.totalRevenue?.toLocaleString()}, Incentive Pool: ${data.summary.estimatedIncentivePool?.toLocaleString()}. Give 3-4 motivating sentence insight. No bullet points.`;
     }
 
     const response = await axios.post("https://api.anthropic.com/v1/messages", {
