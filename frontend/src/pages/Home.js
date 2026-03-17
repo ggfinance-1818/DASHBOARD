@@ -54,7 +54,7 @@ export default function Home() {
           </div>
 
           {/* Brand Name */}
-          <h1 style={{
+          <div style={{
             fontFamily: "'Georgia', 'Times New Roman', serif",
             fontSize: "clamp(1.8rem, 4vw, 2.8rem)",
             color: "#ffffff",
@@ -62,8 +62,7 @@ export default function Home() {
             fontWeight: 400,
             textTransform: "uppercase",
             marginBottom: "0.5rem",
-            textShadow: "0 2px 20px rgba(0,0,0,0.3)"
-          }}>VALYANA DASHBOARD</h1>
+          }}>VALYANA DASHBOARD</div>
 
           {/* Tagline */}
           <p style={{
