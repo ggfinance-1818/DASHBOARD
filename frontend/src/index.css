@@ -88,7 +88,6 @@ body {
 }
 .home-hero-content { position: relative; text-align: center; }
 .home-title {
-  font-family: var(--font-display);
   font-size: clamp(3.5rem, 9vw, 7rem);
   color: var(--white);
   letter-spacing: 6px;
