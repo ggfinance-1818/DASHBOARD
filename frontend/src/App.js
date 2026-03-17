@@ -13,10 +13,10 @@ export default function App() {
     <BrowserRouter>
       <Navbar />
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/sales" element={<SalesReport />} />
-        <Route path="/jars" element={<JarsReport />} />
-        <Route path="/incentive" element={<IncentiveReport />} />
+        <Route path="/"            element={<Home />} />
+        <Route path="/sales"       element={<SalesReport />} />
+        <Route path="/jars"        element={<JarsReport />} />
+        <Route path="/incentive"   element={<IncentiveReport />} />
         <Route path="/staff/:name" element={<StaffProfile />} />
       </Routes>
     </BrowserRouter>
